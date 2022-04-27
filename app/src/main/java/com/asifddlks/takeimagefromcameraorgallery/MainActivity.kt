@@ -7,9 +7,10 @@ import android.content.pm.PackageManager
 import android.database.Cursor
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.os.Build
-import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.DocumentsContract
 import android.provider.MediaStore
@@ -17,10 +18,13 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import java.io.File
+import java.io.InputStream
+
 
 class MainActivity : AppCompatActivity() {
     //Our variables
@@ -93,7 +97,7 @@ class MainActivity : AppCompatActivity() {
             else if ("com.android.providers.downloads.documents" == uri.authority){
                 val contentUri = ContentUris.withAppendedId(
                     Uri.parse(
-                    "content://downloads/public_downloads"), java.lang.Long.valueOf(docId))
+                        "content://downloads/public_downloads"), java.lang.Long.valueOf(docId))
                 imagePath = getRealPathFromURI(contentUri, null)
             }
         }
@@ -130,11 +134,46 @@ class MainActivity : AppCompatActivity() {
             }
             else{
                 mUri?.let {
-                    val bitmap = BitmapFactory.decodeStream(getContentResolver().openInputStream(it))
-                    mImageView!!.setImageBitmap(bitmap)
+                    val bitmap = BitmapFactory.decodeStream(contentResolver.openInputStream(it))
+                    val input: InputStream? =
+                        this.contentResolver.openInputStream(it)
+
+                    val ei = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                        input?.let { it1 -> ExifInterface(it1) }
+                    } else {
+                        it.path?.let { it1 -> ExifInterface(it1) }
+                    }
+                    val orientation: Int = ei?.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_UNDEFINED
+                    ) ?: kotlin.run {
+                        ExifInterface.ORIENTATION_NORMAL
+                    }
+
+                    var rotatedBitmap: Bitmap? = null
+                    rotatedBitmap =
+                        when (orientation) {
+                            ExifInterface.ORIENTATION_ROTATE_90 -> rotateImage(bitmap, 90F)
+                            ExifInterface.ORIENTATION_ROTATE_180 -> rotateImage(bitmap, 180F)
+                            ExifInterface.ORIENTATION_ROTATE_270 -> rotateImage(bitmap, 270F)
+                            ExifInterface.ORIENTATION_NORMAL -> bitmap
+                            else -> bitmap
+                        }
+
+
+                    mImageView!!.setImageBitmap(rotatedBitmap)
                 }
             }
         }
+    }
+
+    fun rotateImage(source: Bitmap, angle: Float): Bitmap? {
+        val matrix = Matrix()
+        matrix.postRotate(angle)
+        return Bitmap.createBitmap(
+            source, 0, 0, source.width, source.height,
+            matrix, true
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
